@@ -2,7 +2,6 @@
 
 End-to-end CI/CD pipeline for a Spring Boot Calculator REST API: Git/GitHub → Jenkins → Docker → Docker Compose.
 
-Developed for **CSE 816: Software Production Engineering (SPE)** under Prof. B. Thangaraju.
 
 ---
 
@@ -137,7 +136,49 @@ curl -s "http://localhost:8080/actuator/health"
 
 ---
 
-## 5. Project Structure
+## 5. Run with Docker
+
+The application includes a production-ready, multi-stage `Dockerfile`.
+
+### Build the Image
+```bash
+docker build -t calculator-api:local .
+```
+
+### Run the Container
+Run the container on port 9090 with a single command:
+```bash
+docker run --rm -d --name calc-test -p 9090:8080 calculator-api:local
+```
+
+### Verify Endpoints
+```bash
+# Verify arithmetic
+curl -s "http://localhost:9090/api/v1/add?a=2&b=3"
+
+# Verify health status
+curl -s "http://localhost:9090/actuator/health"
+
+# Verify container user (non-root)
+docker exec calc-test whoami
+# Output: app
+
+# Stop the container
+docker stop calc-test
+```
+
+### Docker Best Practices Applied
+- **Multi-Stage Build:** Stage 1 (`maven:3.9-eclipse-temurin-17`) compiles and packages the artifact; stage 2 (`eclipse-temurin:17-jre-jammy`) packages only the executable JAR.
+- **Dependency Layer Caching:** `pom.xml` is copied and dependencies resolved via `mvn dependency:go-offline` before copying application source code, avoiding re-downloading dependencies on every code change.
+- **Minimal Runtime Image:** JRE-only base with no compiler or build tools.
+- **Non-Root Execution:** Runs under dedicated unprivileged system user `app` (UID 1001).
+- **Explicit EXPOSE:** Clearly documents port `8080`.
+- **Built-in Healthcheck:** Integrated Docker `HEALTHCHECK` querying `/actuator/health`.
+- **Build Context Optimization:** `.dockerignore` excludes git history, IDE settings, and build artifacts.
+
+---
+
+## 6. Project Structure
 
 ```text
 .
@@ -167,11 +208,14 @@ curl -s "http://localhost:8080/actuator/health"
 │           │   └── CalculatorControllerTest.java
 │           └── service/
 │               └── CalculatorServiceTest.java
+├── .dockerignore
 ├── .gitattributes
 ├── .gitignore
+├── Dockerfile
 ├── LICENSE
 ├── mvnw
 ├── mvnw.cmd
 ├── pom.xml
 └── README.md
 ```
+
