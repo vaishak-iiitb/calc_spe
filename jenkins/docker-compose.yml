@@ -1,0 +1,20 @@
+name: jenkins-ci
+
+services:
+  jenkins:
+    build: .
+    image: calculator-jenkins:lts
+    container_name: jenkins
+    restart: unless-stopped
+    user: root                       # needed to use the host Docker socket
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - m2_cache:/root/.m2           # keeps Maven downloads between builds
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  jenkins_home:
+  m2_cache:

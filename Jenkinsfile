@@ -1,0 +1,139 @@
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '15'))
+        timeout(time: 20, unit: 'MINUTES')
+    }
+
+    triggers {
+        githubPush()
+        // Also supports local Jenkins instances that GitHub cannot reach directly.
+        pollSCM('H/2 * * * *')
+    }
+
+    environment {
+        DOCKERHUB_USER = 'vaishak2005'
+        IMAGE_NAME     = "${DOCKERHUB_USER}/calculator-api"
+        IMAGE_TAG      = "${env.BUILD_NUMBER}"
+        DOCKER_IMAGE   = "${IMAGE_NAME}"
+        NOTIFY_EMAIL   = 'vaishakprasadbhat@gmail.com'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'git log -1 --pretty=format:"%h %an: %s"'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'mvn -B clean package -DskipTests'
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'mvn -B test'
+            }
+            post {
+                always {
+                    junit testResults: 'target/surefire-reports/*.xml'
+                    archiveArtifacts artifacts: 'target/site/jacoco/**', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    docker build --pull \
+                        -t "$IMAGE_NAME:$IMAGE_TAG" \
+                        -t "$IMAGE_NAME:latest" .
+                '''
+            }
+        }
+
+        stage('Push') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                                                  usernameVariable: 'DH_USER',
+                                                  passwordVariable: 'DH_PASS')]) {
+                    sh '''
+                        echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+                        docker push "$IMAGE_NAME:$IMAGE_TAG"
+                        docker push "$IMAGE_NAME:latest"
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    docker compose pull calculator
+                    docker compose up -d --build --remove-orphans --wait --wait-timeout 120
+                    docker compose ps
+
+                    # Verify through the proxy from inside the nginx container
+                    docker compose exec -T nginx wget -qO- http://127.0.0.1/actuator/health | grep -q '"status":"UP"'
+                    docker compose exec -T nginx wget -qO- "http://127.0.0.1/api/v1/add?a=2&b=3" | grep -q '"result":5'
+                    echo "Deployment healthy: $IMAGE_NAME:$IMAGE_TAG"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                try {
+                    if (env.NOTIFY_EMAIL) {
+                        mail to: "${env.NOTIFY_EMAIL}",
+                             subject: "[SUCCESS] ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                             body: """Build #${env.BUILD_NUMBER} succeeded and was deployed.
+
+Image:   ${env.IMAGE_NAME}:${env.IMAGE_TAG}
+Console: ${env.BUILD_URL}console
+"""
+                    }
+                } catch (Exception e) {
+                    echo "Email notification skipped/failed: ${e.message}"
+                }
+            }
+        }
+        failure {
+            sh 'docker compose ps || true'
+            sh 'docker compose logs --tail=50 || true'
+            script {
+                try {
+                    if (env.NOTIFY_EMAIL) {
+                        mail to: "${env.NOTIFY_EMAIL}",
+                             subject: "[FAILURE] ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                             body: """Build #${env.BUILD_NUMBER} FAILED.
+
+Console: ${env.BUILD_URL}console
+"""
+                    }
+                } catch (Exception e) {
+                    echo "Email notification skipped/failed: ${e.message}"
+                }
+            }
+        }
+        always {
+            sh 'docker logout || true'
+        }
+    }
+}
+
+//removing comment
+
