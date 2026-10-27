@@ -1,0 +1,44 @@
+name: calculator
+
+services:
+  calculator:
+    # Overridden by Jenkins with the exact build being deployed
+    image: ${DOCKER_IMAGE:-calculator-api:local}
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: "8080"
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
+      APP_VERSION: "${IMAGE_TAG:-dev}"       # surfaces in /actuator/info
+    expose:
+      - "8080"                               # reachable only inside the private network
+    networks: [backend]
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/actuator/health | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 40s
+
+  nginx:
+    build: ./nginx
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8081}:80"
+    depends_on:
+      calculator:
+        condition: service_healthy
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/nginx-health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+networks:
+  backend:
+    driver: bridge
