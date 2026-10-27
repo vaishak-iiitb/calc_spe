@@ -178,7 +178,74 @@ docker stop calc-test
 
 ---
 
-## 6. Project Structure
+## 6. Deploy with Docker Compose
+
+A multi-container stack orchestrated via Docker Compose, running **two replicas** of the Calculator service behind an **Nginx reverse proxy and load balancer**.
+
+### Architecture
+
+```mermaid
+graph TD
+    Client["Client / Browser / curl"] -->|HTTP localhost:8081| Nginx["Nginx Reverse Proxy (:80)"]
+    subgraph Private Bridge Network [calculator_backend]
+        Nginx -->|Round-Robin / DNS Resolver| Calc1["Calculator Replica 1 (:8080)"]
+        Nginx -->|Round-Robin / DNS Resolver| Calc2["Calculator Replica 2 (:8080)"]
+    end
+```
+
+### Services Description
+- **`calculator`**: Runs the Spring Boot API in 2 replicas (`deploy.replicas: 2`). Memory limit is set to 512MB each (`-XX:MaxRAMPercentage=75.0`). Connected to the private `backend` bridge network with no exposed host ports. Healthcheck polls `/actuator/health`.
+- **`nginx`**: Custom Nginx reverse proxy image (`nginx/Dockerfile`) listening on host port `8081` (configurable via `${HOST_PORT}`). Waits for backend service health (`condition: service_healthy`) before accepting traffic. Employs Docker embedded DNS (`127.0.0.11 valid=5s`) to dynamically resolve redeployed replica IPs.
+
+### One-Command Deployment
+```bash
+docker compose up -d --build --wait
+```
+
+### Verification
+1. **API Calculation via Proxy:**
+   ```bash
+   curl -s "http://localhost:8081/api/v1/add?a=2&b=3"
+   # {"operation":"add","a":2,"b":3,"result":5}
+   ```
+
+2. **Application Info & Injected Version:**
+   ```bash
+   curl -s "http://localhost:8081/actuator/info"
+   # {"app":{"name":"calculator-api","version":"dev"}}
+   ```
+
+3. **Verify Load Balancing (X-Upstream header):**
+   ```bash
+   for i in 1 2 3 4 5 6; do curl -sI "http://localhost:8081/actuator/health" | grep -i x-upstream; done
+   # Output alternates between replica internal IPs (e.g., 172.19.0.2:8080 and 172.19.0.3:8080)
+   ```
+
+4. **Self-Healing Verification:**
+   ```bash
+   # Kill one replica
+   docker kill $(docker compose ps -q calculator | head -1)
+   
+   # Service remains available seamlessly through the second replica
+   curl -s "http://localhost:8081/actuator/health"
+   
+   # Restart policy automatically recovers the replica
+   docker compose ps
+   ```
+
+### Overriding Image Tag
+```bash
+IMAGE_TAG=1.0.0 docker compose up -d
+```
+
+### Stopping the Stack
+```bash
+docker compose down
+```
+
+---
+
+## 7. Project Structure
 
 ```text
 .
@@ -186,6 +253,9 @@ docker stop calc-test
 │   └── pull_request_template.md
 ├── docs/
 │   └── SPE_Mini_Project.docx
+├── nginx/
+│   ├── default.conf
+│   └── Dockerfile
 ├── src/
 │   ├── main/
 │   │   ├── java/com/vaishak/calculator/
@@ -211,6 +281,7 @@ docker stop calc-test
 ├── .dockerignore
 ├── .gitattributes
 ├── .gitignore
+├── docker-compose.yml
 ├── Dockerfile
 ├── LICENSE
 ├── mvnw
@@ -218,4 +289,5 @@ docker stop calc-test
 ├── pom.xml
 └── README.md
 ```
+
 
