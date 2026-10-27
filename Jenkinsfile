@@ -8,6 +8,13 @@ pipeline {
         timeout(time: 20, unit: 'MINUTES')
     }
 
+    environment {
+        DOCKERHUB_USER = 'vaishak-iiitb'
+        IMAGE_NAME     = "${DOCKERHUB_USER}/calculator-api"
+        IMAGE_TAG      = "${env.BUILD_NUMBER}"
+        DOCKER_IMAGE   = "${IMAGE_NAME}"
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -36,6 +43,16 @@ pipeline {
                     junit testResults: 'target/surefire-reports/*.xml'
                     archiveArtifacts artifacts: 'target/site/jacoco/**', allowEmptyArchive: true
                 }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    docker build --pull \
+                        -t "$IMAGE_NAME:$IMAGE_TAG" \
+                        -t "$IMAGE_NAME:latest" .
+                '''
             }
         }
     }
