@@ -361,7 +361,30 @@ without changing the build result.
 
 ---
 
-## 8. Project Structure
+## 8. Git Workflow
+
+The repository uses short-lived feature branches and pull requests so that
+application, deployment, and pipeline changes are reviewed before reaching
+`main`.
+
+```bash
+# Start work from the latest main branch
+git switch main
+git pull --ff-only origin main
+git switch -c feature/<short-description>
+
+# Validate and publish the feature branch
+./mvnw test
+git add <changed-files>
+git commit -m "type: describe the change"
+git push -u origin feature/<short-description>
+```
+
+Open a pull request against `main`, use the repository pull-request template,
+and merge only after the relevant checks pass. After merging, remove the
+short-lived feature branch locally and on GitHub when it is no longer needed.
+
+## 9. Project Structure
 
 ```text
 .
