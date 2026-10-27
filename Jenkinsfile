@@ -69,5 +69,20 @@ pipeline {
                 }
             }
         }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    docker compose pull calculator
+                    docker compose up -d --build --remove-orphans --wait --wait-timeout 120
+                    docker compose ps
+
+                    # Verify through the proxy from inside the nginx container
+                    docker compose exec -T nginx wget -qO- http://127.0.0.1/actuator/health | grep -q '"status":"UP"'
+                    docker compose exec -T nginx wget -qO- "http://127.0.0.1/api/v1/add?a=2&b=3" | grep -q '"result":5'
+                    echo "Deployment healthy: $IMAGE_NAME:$IMAGE_TAG"
+                '''
+            }
+        }
     }
 }
