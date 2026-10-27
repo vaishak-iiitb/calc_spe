@@ -245,7 +245,62 @@ docker compose down
 
 ---
 
-## 7. Project Structure
+## 7. CI/CD Pipeline (Jenkins)
+
+The repository implements a fully automated declarative Jenkins pipeline (`Jenkinsfile`) following modern DevSecOps practices.
+
+### Pipeline Workflow
+
+```mermaid
+graph LR
+    Dev([Developer]) -->|git push| GH[GitHub Repository]
+    GH -->|Webhook via smee.io| Jenkins[Jenkins CI/CD]
+    
+    subgraph Jenkins Pipeline
+        Checkout[1. Checkout] --> Build[2. Build jar]
+        Build --> Test[3. Test & JaCoCo]
+        Test --> DockerBuild[4. Docker Build]
+        DockerBuild --> Push[5. Docker Hub Push]
+        Push --> Deploy[6. Compose Deploy]
+    end
+
+    Deploy -->|Push image| DH[(Docker Hub)]
+    Deploy -->|Rolling update| Stack[Docker Compose Stack]
+    Deploy -->|Status email| Mail[Student Inbox]
+```
+
+### Pipeline Stages
+
+| Stage | Command / Action | Purpose | On Failure |
+|---|---|---|---|
+| **Checkout** | `checkout scm` | Pulls branch commit and logs short hash/author | Pipeline aborts |
+| **Build** | `mvn -B clean package -DskipTests` | Compiles application and packages executable JAR artifact | Pipeline aborts, no artifact archived |
+| **Test** | `mvn -B test` | Executes 34 unit & MockMvc integration tests; enforces 80% JaCoCo coverage | Fails stage, archives JUnit XML & JaCoCo HTML; sends failure email; aborts deployment |
+| **Docker Build** | `docker build --pull -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest .` | Multi-stage image build tagged with Jenkins `${BUILD_NUMBER}` and `latest` | Aborts pipeline |
+| **Push** | `docker push` with `withCredentials` | Authenticates to Docker Hub using Jenkins Credential Store (`dockerhub-creds`) | Aborts pipeline; tokens masked in console |
+| **Deploy** | `docker compose pull && docker compose up -d --build --wait` | Idempotent deployment of 2 replicas + Nginx; verifies internal proxy health probes | Dumps compose logs; sends failure email; existing good deployment remains untouched |
+
+### Running Jenkins Locally as Code
+
+Jenkins itself is containerized with Docker CLI, Compose v2 plugin, and Maven pre-installed:
+
+```bash
+cd jenkins
+docker compose up -d --build
+```
+- **Access UI:** `http://localhost:8080`
+- **Initial Admin Password:**
+  ```bash
+  docker compose exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+  ```
+
+### Credentials & Security Management
+- All sensitive tokens (Docker Hub access token, email passwords) are stored exclusively inside the **Jenkins Credentials Store** (`dockerhub-creds`).
+- No secrets, tokens, or private credentials are ever stored in source code, configuration files, or git history.
+
+---
+
+## 8. Project Structure
 
 ```text
 .
@@ -253,6 +308,9 @@ docker compose down
 │   └── pull_request_template.md
 ├── docs/
 │   └── SPE_Mini_Project.docx
+├── jenkins/
+│   ├── Dockerfile
+│   └── docker-compose.yml
 ├── nginx/
 │   ├── default.conf
 │   └── Dockerfile
@@ -283,11 +341,13 @@ docker compose down
 ├── .gitignore
 ├── docker-compose.yml
 ├── Dockerfile
+├── Jenkinsfile
 ├── LICENSE
 ├── mvnw
 ├── mvnw.cmd
 ├── pom.xml
 └── README.md
 ```
+
 
 
