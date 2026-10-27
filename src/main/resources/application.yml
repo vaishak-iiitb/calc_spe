@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: calculator-api
+  jackson:
+    generator:
+      write-bigdecimal-as-plain: true
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: calculator-api
+    version: ${APP_VERSION:dev}
