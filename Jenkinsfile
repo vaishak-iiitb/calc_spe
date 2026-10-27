@@ -8,6 +8,12 @@ pipeline {
         timeout(time: 20, unit: 'MINUTES')
     }
 
+    triggers {
+        githubPush()
+        // Fallback if the webhook relay is unavailable (spec allows Poll SCM):
+        // pollSCM('H/2 * * * *')
+    }
+
     environment {
         DOCKERHUB_USER = 'vaishak-iiitb'
         IMAGE_NAME     = "${DOCKERHUB_USER}/calculator-api"
@@ -83,6 +89,31 @@ pipeline {
                     echo "Deployment healthy: $IMAGE_NAME:$IMAGE_TAG"
                 '''
             }
+        }
+    }
+
+    post {
+        success {
+            mail to: "${env.NOTIFY_EMAIL}",
+                 subject: "[SUCCESS] ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                 body: """Build #${env.BUILD_NUMBER} succeeded and was deployed.
+
+Image:   ${env.IMAGE_NAME}:${env.IMAGE_TAG}
+Console: ${env.BUILD_URL}console
+"""
+        }
+        failure {
+            sh 'docker compose ps || true'
+            sh 'docker compose logs --tail=50 || true'
+            mail to: "${env.NOTIFY_EMAIL}",
+                 subject: "[FAILURE] ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                 body: """Build #${env.BUILD_NUMBER} FAILED.
+
+Console: ${env.BUILD_URL}console
+"""
+        }
+        always {
+            sh 'docker logout || true'
         }
     }
 }
