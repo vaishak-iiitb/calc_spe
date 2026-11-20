@@ -1,0 +1,211 @@
+\documentclass[9pt,a4paper]{article}
+\usepackage[margin=0.55in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{multicol}
+\usepackage{titlesec}
+\usepackage{float}
+
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!60!black,
+  pdftitle={Calculator REST API and CI/CD Pipeline},pdfauthor={Vaishak Prasad Bhat}}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{2pt}
+\setlist{nosep,leftmargin=*}
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.35em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.35em}{}
+\titlespacing*{\section}{0pt}{4pt}{2pt}
+\titlespacing*{\subsection}{0pt}{3pt}{1pt}
+\captionsetup{font=scriptsize,skip=2pt}
+
+\newcommand{\fig}[3]{%
+  \begin{minipage}[t]{#2\linewidth}\centering
+  \includegraphics[width=\linewidth,height=0.24\textheight,keepaspectratio]{figures/#1}
+  \captionof{figure}{#3}
+  \end{minipage}}
+\newcommand{\widefig}[3]{%
+  \begin{figure}[H]\centering
+  \includegraphics[width=#2\linewidth,height=0.31\textheight,keepaspectratio]{figures/#1}
+  \caption{#3}\end{figure}}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries End-to-End CI/CD Pipeline for a Calculator REST API}\\[-1pt]
+{\normalsize CSE 816 -- Software Production Engineering Mini-Project}\\
+{\small Vaishak Prasad Bhat \quad|\quad October 2026}\\[2pt]
+{\small
+\href{https://github.com/vaishak-iiitb/calc_spe}{GitHub repository}
+\quad\textbar\quad
+\href{https://hub.docker.com/repository/docker/vaishak2005/calculator-api/general}
+{Docker Hub image repository}}
+\end{center}
+
+\section{Overview}
+This project implements a small production-style Calculator REST API with
+Java 17, Spring Boot, and Maven, then connects it to GitHub, Jenkins, Docker,
+Docker Hub, and Docker Compose. The application performs exact decimal
+arithmetic, validates inputs, returns structured HTTP 400 errors, and exposes
+an Actuator health probe. The pipeline builds, tests, containerizes, publishes,
+and deploys the service automatically. 
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+\toprule
+\textbf{Endpoint} & \textbf{Purpose} & \textbf{Result}\\
+\midrule
+\texttt{/api/v1/add?a=\&b=} & Addition & \(a+b\)\\
+\texttt{/api/v1/subtract?a=\&b=} & Subtraction & \(a-b\)\\
+\texttt{/api/v1/multiply?a=\&b=} & Multiplication & \(a\times b\)\\
+\texttt{/api/v1/divide?a=\&b=} & Division & HTTP 400 for \(b=0\)\\
+\texttt{/actuator/health} & Health probe & UP/DOWN\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Architecture and Deployment}
+Docker Compose runs two calculator replicas behind an Nginx reverse proxy.
+The proxy publishes port 8081, resolves the service name dynamically, and
+routes requests over an internal network. Health checks use
+\texttt{/actuator/health}; restart policies and dependency conditions make
+the deployment repeatable. Keeping the application containers off the host
+port also makes the proxy the single entry point for API requests.
+
+\begin{center}
+\fig{screenshot-01.png}{.49}{Compose startup showing two healthy calculator replicas and Nginx.}
+\hfill
+\fig{screenshot-02.png}{.49}{Addition, division-by-zero, and health responses through Nginx.}
+\end{center}
+
+\section{Evidence Summary}
+\begin{multicols}{2}
+\textbf{Testing:} JUnit 5 unit tests cover every operation, including
+division by zero. MockMvc tests exercise real endpoints, validation, and
+health. Jenkins publishes JUnit XML results and JaCoCo coverage.
+
+\textbf{Containerization:} A multi-stage Dockerfile builds the JAR in a
+Maven/JDK image and runs it in a slim JRE image. The runtime uses a dedicated
+non-root user, explicit port exposure, and a health check.
+
+\textbf{Delivery:} Jenkins stages are Checkout, Build, Test, Docker Build,
+Push, Deploy, and Post Actions. Docker Hub credentials are injected through
+Jenkins Credentials Store rather than committed to source control.
+
+\textbf{Version control:} The repository uses meaningful commits, feature
+branches, and a visible non-fast-forward merge of
+\texttt{feature/document-git-workflow} into \texttt{main}. The Java/Maven
+\texttt{.gitignore} excludes build output and secrets.
+
+\textbf{Reproducibility:} Maven Wrapper is included so the project can be
+built without relying on a globally installed Maven version. The Docker and
+Compose files keep local deployment commands short and consistent.
+\end{multicols}
+
+\newpage
+\section{Compose Validation and Load Balancing}
+The deployment command \texttt{docker compose up -d --build --wait} builds
+the proxy and application images, starts all services, and waits for health.
+The screenshots show successful container status and repeated upstream
+selection across both calculator replicas. This also checks that Nginx is not
+fixed to one container and that both replicas are reachable through the
+Compose service name.
+
+\begin{center}
+\fig{screenshot-03.png}{.49}{Repeated health checks reaching one calculator upstream.}
+\hfill
+\fig{screenshot-04.png}{.49}{Repeated health checks reaching the second upstream.}
+\end{center}
+
+\widefig{screenshot-05.png}{.82}{Docker run verification: the container runs as the unprivileged user \texttt{app}.}
+
+\section{Quality and Test Results}
+The build executes 34 tests: 25 service tests and 9 controller tests, with no
+failures or skipped tests. JaCoCo reports 95\% total instruction coverage and
+100\% branch coverage for the measured bundle, and the Maven coverage check
+enforces the configured threshold.
+
+\begin{center}
+\fig{screenshot-06.png}{.49}{JaCoCo package coverage summary.}
+\hfill
+\fig{screenshot-08.png}{.49}{Jenkins test report: all 34 tests pass.}
+\end{center}
+
+\newpage
+\section{Jenkins Continuous Delivery}
+The declarative \texttt{Jenkinsfile} checks out the source, runs
+\texttt{mvn clean package -DskipTests}, runs \texttt{mvn test}, publishes
+test and coverage results, builds a build-number-tagged image, pushes it to
+Docker Hub, and deploys the Compose stack with health verification.
+
+The pipeline uses Jenkins-managed credentials for Docker Hub authentication.
+This keeps login details outside the repository and allows the same pipeline
+definition to be reused on another Jenkins installation after credentials and
+email settings have been configured. The final deployment stage uses Compose
+health checks rather than treating image creation alone as success.
+
+\begin{center}
+\fig{screenshot-07.png}{.49}{Build 4: technical stages pass; local SMTP notification is unavailable.}
+\hfill
+\fig{screenshot-09.png}{.49}{Build 5: all pipeline stages and post actions pass.}
+\end{center}
+
+\widefig{screenshot-11.png}{.82}{Email evidence: the successful deployment notification for Jenkins build 17.}
+
+\section{Pipeline Behaviour}
+The pipeline is designed to be idempotent: Compose pulls or builds the
+requested image, updates services, waits for health, and leaves a running
+deployment in a usable state. Notifications report the final build status;
+the logged SMTP failure in Build 4 did not conceal the successful technical
+stages, while Build 5 and the email in Figure 11 show successful notification
+delivery.
+
+\newpage
+\section{Published Image and Reproducibility}
+The Docker Hub repository contains the published
+\texttt{vaishak2005/calculator-api} image with \texttt{latest} and numbered
+tags. The public image page is available at
+\href{https://hub.docker.com/repository/docker/vaishak2005/calculator-api/general}
+{\texttt{hub.docker.com/vaishak2005/calculator-api}}. The image can be run
+independently:
+
+% \begin{center}
+% \small\texttt{docker run --rm -p 9090:8080 vaishak2005/calculator-api:latest}
+% \end{center}
+
+\begin{center}
+\fig{screenshot-10.png}{.62}{Docker Hub repository and published image tags.}
+\end{center}
+
+\section{Conclusion}
+The completed implementation demonstrates the mini-project requirements from
+application code through deployment:
+
+\begin{itemize}
+\item REST operations, validation, structured errors, and Actuator health;
+\item JUnit and MockMvc testing with passing Jenkins results and JaCoCo coverage;
+\item secure, multi-stage, non-root Docker packaging;
+\item multi-component Compose deployment with Nginx and two replicas;
+\item Jenkins automation for build, test, image build, push, deploy, and email;
+\item GitHub feature-branch workflow with a meaningful merged history.
+\end{itemize}
+
+The final \texttt{main} history contains 19 commits dated from 22--27
+October 2026. The application, Docker, Compose, and Jenkins work is organized
+as descriptive commits, followed by the feature-branch merge mentioned above.
+The source and configuration are available in the
+\href{https://github.com/vaishak-iiitb/calc_spe}{GitHub repository}. All
+eleven screenshots from \texttt{docs/latex\_report/figures} are included:
+Compose status, API responses, upstream distribution, non-root execution,
+coverage, Jenkins tests, pipeline outcomes, Docker Hub, and email
+notification. Together, they provide a practical record of the checks carried
+out while developing and deploying the project.
+
+\end{document}

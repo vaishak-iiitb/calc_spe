@@ -133,6 +133,7 @@ Console: ${env.BUILD_URL}console
             sh 'docker logout || true'
         }
     }
+    
 }
 
 //removing comment
