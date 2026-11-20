@@ -22,7 +22,7 @@ class CalculatorServiceTest {
 
     @ParameterizedTest
     @CsvSource({
-            "2, 3, 10",
+            "2, 3, 5",
             "-2, 3, 1",
             "-5, -7, -12",
             "0, 0, 0",
